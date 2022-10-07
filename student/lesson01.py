@@ -1,7 +1,9 @@
+from time import sleep
+
 from duckduckgo_search import ddg_images
+from fastai.vision.all import *
 from fastcore.all import *
 from fastdownload import download_url
-from fastai.vision.all import *
 
 
 def search_images(term, max_images=30):
@@ -9,9 +11,53 @@ def search_images(term, max_images=30):
     return L(ddg_images(term, max_results=max_images)).itemgot('image')
 
 
-urls = search_images('bird photos', max_images=1)
-dest = 'student/images/bird.jpg'
-download_url(urls[0], dest, show_progress=False)
+def downloadImageExample(parentDir):
+    urls = search_images('bird photos', max_images=1)
+    dest = parentDir/'bird.jpg'
+    download_url(urls[0], dest, show_progress=False)
+    im = Image.open(dest)
+    im.to_thumb(256,256)
 
-im = Image.open(dest)
-im.to_thumb(256,256)
+
+def main(parentDir):
+    searches = 'forest','bird'
+    path = Path(parentDir/'bird_or_not')
+
+    for o in searches:
+        dest = (path/o)
+        if not dest.exists():
+            dest.mkdir(exist_ok=True, parents=True)
+            download_images(dest, urls=search_images(f'{o} photo'))
+            download_images(dest, urls=search_images(f'{o} sun photo'))
+            download_images(dest, urls=search_images(f'{o} shade photo'))
+
+            resize_images(path/o, max_size=400, dest=path/o)
+
+    failed = verify_images(get_image_files(path))
+    failed.map(Path.unlink)
+
+    dls = DataBlock(
+        blocks=(ImageBlock, CategoryBlock),
+        get_items=get_image_files,
+        splitter=RandomSplitter(valid_pct=0.2, seed=42),
+        get_y=parent_label,
+        item_tfms=[Resize(192, method='squish')],
+    ).dataloaders(path, bs=32)
+
+    dls.show_batch(max_n=6)
+    learn = vision_learner(dls, resnet18, metrics=error_rate)
+    learn.fine_tune(3)
+
+    imagePath = parentDir/'target.jpg'
+    urls = search_images('monkey in forest photos', max_images=1)
+    download_url(urls[-1], imagePath, show_progress=False)
+    image = PILImage.create(imagePath)
+    predictedClass,_,probs = learn.predict(image)
+    print(f"This is a: {predictedClass}.")
+    print(f"Probability it's a bird: {probs[0]:.4f}")
+    image.to_thumb(256,256)
+
+
+if __name__ == "__main__":
+    parentDir = Path('student/images')
+    main(parentDir)
