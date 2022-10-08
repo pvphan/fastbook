@@ -16,13 +16,14 @@ def downloadImageExample(parentDir):
     dest = parentDir/'bird.jpg'
     download_url(urls[0], dest, show_progress=False)
     im = Image.open(dest)
-    im.to_thumb(256,256)
+    #im.to_thumb(256,256)
 
 
 def main(parentDir):
     searches = 'forest','bird'
     path = Path(parentDir/'bird_or_not')
 
+    print("Downloading images")
     for o in searches:
         dest = (path/o)
         if not dest.exists():
@@ -33,9 +34,11 @@ def main(parentDir):
 
             resize_images(path/o, max_size=400, dest=path/o)
 
+    print("Unlinking corrupt images")
     failed = verify_images(get_image_files(path))
     failed.map(Path.unlink)
 
+    print("Creating dataloader")
     dls = DataBlock(
         blocks=(ImageBlock, CategoryBlock),
         get_items=get_image_files,
@@ -43,19 +46,23 @@ def main(parentDir):
         get_y=parent_label,
         item_tfms=[Resize(192, method='squish')],
     ).dataloaders(path, bs=32)
+    #dls.show_batch(max_n=6)
 
-    dls.show_batch(max_n=6)
-    learn = vision_learner(dls, resnet18, metrics=error_rate)
-    learn.fine_tune(3)
+    print("Training learner")
+    learner = vision_learner(dls, resnet18, metrics=error_rate)
 
+    print("Find tuning learner")
+    learner.fine_tune(3)
+
+    print("Testing learner inference")
     imagePath = parentDir/'target.jpg'
     urls = search_images('monkey in forest photos', max_images=1)
     download_url(urls[-1], imagePath, show_progress=False)
     image = PILImage.create(imagePath)
-    predictedClass,_,probs = learn.predict(image)
+    predictedClass, _, probs = learner.predict(image)
     print(f"This is a: {predictedClass}.")
     print(f"Probability it's a bird: {probs[0]:.4f}")
-    image.to_thumb(256,256)
+    #image.to_thumb(256,256)
 
 
 if __name__ == "__main__":
